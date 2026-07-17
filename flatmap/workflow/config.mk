@@ -18,17 +18,20 @@ SHELL := /bin/bash
 CMP := cmp
 GREP := grep
 ifeq (Darwin,$(DETECTED_OS))
-# use GNU versions, not BSD versions
-MV := gmv
-LN := gln
-AWK := gawk
-SED := gsed
-CAT := gcat
-SEQ := gseq
-ECHO := gecho
-HEAD := ghead
-EXPR := gexpr
-PASTE := gpaste
+# Homebrew installs these GNU tools with a "g" prefix, while Conda/Pixi
+# exposes the same tools under their ordinary names.  Prefer the prefixed
+# executable when it exists and otherwise use the ordinary one from PATH.
+gnu_or_system = $(if $(shell command -v g$(1) 2>/dev/null),g$(1),$(1))
+MV := $(call gnu_or_system,mv)
+LN := $(call gnu_or_system,ln)
+AWK := $(call gnu_or_system,awk)
+SED := $(call gnu_or_system,sed)
+CAT := $(call gnu_or_system,cat)
+SEQ := $(call gnu_or_system,seq)
+ECHO := $(call gnu_or_system,echo)
+HEAD := $(call gnu_or_system,head)
+EXPR := $(call gnu_or_system,expr)
+PASTE := $(call gnu_or_system,paste)
 else
 MV := mv
 LN := ln

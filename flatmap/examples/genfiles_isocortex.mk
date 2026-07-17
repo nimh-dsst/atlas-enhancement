@@ -171,7 +171,7 @@ define recipe_relative_depth
 #import numpy as np
 #from voxcell import VoxelData
 #msk = VoxelData.load_nrrd('$<')
-#lap = noxelData.load_nrrd('$(word 2,$^)')
+#lap = VoxelData.load_nrrd('$(word 2,$^)')
 #res = np.full_like(msk.raw, np.nan, dtype=np.float32)
 #bmsk = (msk.raw == 1)
 #res[bmsk] = 1 - lap.raw[bmsk]

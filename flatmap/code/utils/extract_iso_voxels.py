@@ -1,63 +1,99 @@
-import numpy as np
-from voxcell import VoxelData
+"""Extract the one-voxel-thick boundary of a relative-depth isosurface."""
+
 import sys
 
-from scipy.ndimage import distance_transform_edt
+import numpy as np
+from voxcell import VoxelData
 
 
-def is_background(array, val = np.nan):
+def is_background(array, val=np.nan):
     return np.isnan(array) if np.isnan(val) else (array == val)
 
 
-# CLI interface
-rdepth_nrrd = sys.argv[1]
-thresh = float(sys.argv[2])
+def extract_iso_voxels(rdepth, thresh, side, bkg_val=np.nan, chunk_size=16):
+    """Return foreground voxels touching the opposite side of ``thresh``.
 
-side = sys.argv[3]
-if side not in ['top','bottom']:
-    raise ValueError('side must be "top" or "bottom"')
+    The original implementation computed a float64 Euclidean distance
+    transform over the isocortex bounding box.  Its ``edt == 1`` test is
+    exactly equivalent to asking whether a voxel has a face-adjacent neighbor
+    on the opposite side of the threshold.  Evaluating that relation in small
+    slabs gives the same result without the multi-gigabyte EDT allocation.
+    """
+    if side not in ("top", "bottom"):
+        raise ValueError('side must be "top" or "bottom"')
+    if rdepth.ndim != 3:
+        raise ValueError("relative depth must be a three-dimensional array")
 
-output_nrrd = sys.argv[4]
+    boundary = np.zeros(rdepth.shape, dtype=np.uint8)
+    shape = rdepth.shape
 
-bkg_val = np.nan
-if len(sys.argv) > 5:
-    bkg_val = np.float32(sys.argv[5])
+    if np.isnan(bkg_val):
+        valid = np.isfinite
+    else:
+        valid = lambda array: array != bkg_val
+
+    if side == "top":
+        current_side = lambda array: array >= thresh
+        opposite_side = lambda array: array < thresh
+    else:
+        current_side = lambda array: array <= thresh
+        opposite_side = lambda array: array > thresh
+
+    # Check both directions along each of the three axes.  Axis 0 is also
+    # divided into slabs so temporary boolean arrays remain small at 10 um.
+    for axis in range(3):
+        for shift in (-1, 1):
+            current_start = [0, 0, 0]
+            current_stop = list(shape)
+            if shift < 0:
+                current_start[axis] = 1
+            else:
+                current_stop[axis] -= 1
+
+            for slab_start in range(current_start[0], current_stop[0], chunk_size):
+                slab_stop = min(slab_start + chunk_size, current_stop[0])
+                current_slice = [slice(current_start[i], current_stop[i]) for i in range(3)]
+                current_slice[0] = slice(slab_start, slab_stop)
+
+                neighbor_slice = list(current_slice)
+                neighbor_slice[axis] = slice(
+                    current_slice[axis].start + shift,
+                    current_slice[axis].stop + shift,
+                )
+                current_slice = tuple(current_slice)
+                neighbor_slice = tuple(neighbor_slice)
+
+                current = rdepth[current_slice]
+                neighbor = rdepth[neighbor_slice]
+                selected = (
+                    valid(current)
+                    & valid(neighbor)
+                    & current_side(current)
+                    & opposite_side(neighbor)
+                )
+                boundary[current_slice][selected] = 1
+
+    return boundary
 
 
-# load data
-vd = VoxelData.load_nrrd(rdepth_nrrd)
-rdepth = vd.raw
+def main(argv=None):
+    argv = sys.argv if argv is None else argv
+    if len(argv) < 5:
+        raise SystemExit(
+            "usage: extract_iso_voxels.py RELATIVE_DEPTH THRESHOLD "
+            "{top,bottom} OUTPUT [BACKGROUND]"
+        )
 
-# get bounding box
-xyz = ['x', 'y', 'z']
-w = np.where(~is_background(rdepth,bkg_val))
-bnds = {v: (np.min(w[i]), np.max(w[i])) for i, v in enumerate(xyz) }
-shape = tuple([v[1] - v[0] + 1 for k, v in bnds.items()])
-shape_pad = tuple([x + 2 for x in shape])  # add padding
-wnew = tuple([w[i] - bnds[v][0] for i, v in enumerate(xyz)])
-wnew_pad = tuple([x + 1 for x in wnew])
+    rdepth_nrrd = argv[1]
+    thresh = float(argv[2])
+    side = argv[3]
+    output_nrrd = argv[4]
+    bkg_val = np.nan if len(argv) <= 5 else np.float32(argv[5])
 
-# bounding box sized (plus 1-padding)
-rdepth_bnd = np.full(shape_pad, bkg_val, dtype=np.float32)
-rdepth_bnd[wnew_pad] = rdepth[w]
-msk_bkg = is_background(rdepth_bnd,bkg_val)
+    vd = VoxelData.load_nrrd(rdepth_nrrd)
+    boundary = extract_iso_voxels(vd.raw, thresh, side, bkg_val)
+    vd.with_data(boundary).save_nrrd(output_nrrd)
 
-# costly EDT
-bnd = np.zeros_like(rdepth_bnd, dtype=np.uint8)
-if side == 'top':
-    msk = (rdepth_bnd >= thresh)
-    flt = msk | msk_bkg
-    edt = distance_transform_edt(flt, return_distances=True)
-    bnd[(edt == 1) & msk] = 1
-else:
-    msk = (rdepth_bnd <= thresh)
-    flt = msk | msk_bkg
-    edt = distance_transform_edt(flt, return_distances=True)
-    bnd[(edt == 1) & msk] = 1
 
-# copy back to full-size
-bnd_full = np.zeros_like(rdepth, dtype=np.uint8)
-bnd_full[w] = bnd[wnew]
-
-# save result
-vd.with_data(bnd_full).save_nrrd(output_nrrd)
+if __name__ == "__main__":
+    main()

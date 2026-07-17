@@ -53,7 +53,7 @@ int main(int argc, char** argv)
 
         // choose square corners equidistant along longest border,
         // starting from point at @offset and cycling around
-        vda.reserve(4);
+        vda.resize(4);
         double len = 0;
         for(int i=0;i<hfs.size();i++) {
             int index = (i + offset) % hfs.size();

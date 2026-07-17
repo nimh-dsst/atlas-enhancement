@@ -22,7 +22,15 @@ all: flatpath
 
 main: $(OBJS)
 
+REGENERATE_CMOD ?= 0
+ifeq (1,$(REGENERATE_CMOD))
 main.c: interp_field.h
+else
+main.c: interp_field.h
+	@test -f $@
+interp_field.c streamline.c interp_field.h streamline.h:
+	@test -f $@
+endif
 
 ifeq (1,$(DEBUG))
 flatpath: CPPFLAGS += -DDEBUG=1

@@ -1,0 +1,25 @@
+[workspace]
+name = "atlas-enhancement-native"
+version = "0.1.0"
+description = "Reproducible native toolchain for the atlas-enhancement flatmap workflow"
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[dependencies]
+c-compiler = "*"
+cgal-cpp = ">=6,<7"
+cmake = ">=3.28,<4"
+coreutils = "*"
+cxx-compiler = "*"
+eigen = ">=3.4,<4"
+gawk = "*"
+gmsh = "*"
+gmp = "*"
+gsl = "*"
+llvm-openmp = "*"
+make = ">=4"
+mpfr = "*"
+ninja = "*"
+parallel = "*"
+sed = "*"
+zlib = "*"

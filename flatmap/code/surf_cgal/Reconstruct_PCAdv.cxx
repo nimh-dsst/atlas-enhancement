@@ -1,5 +1,7 @@
 #include <fstream>
 #include <iostream>
+#include <set>
+#include <vector>
 
 #include <CGAL/Scale_space_surface_reconstruction_3.h>
 #include <CGAL/Scale_space_reconstruction_3/Advancing_front_mesher.h>
@@ -25,6 +27,7 @@ typedef Reconstruction::Facet_const_iterator                Facet_iterator;
 typedef CGAL::Surface_mesh<Point>                           SurfaceMesh;
 typedef boost::graph_traits<SurfaceMesh>::face_descriptor   face_descriptor;
 typedef boost::graph_traits<SurfaceMesh>::vertex_descriptor vertex_descriptor;
+typedef boost::graph_traits<SurfaceMesh>::halfedge_descriptor halfedge_descriptor;
 
 typedef CGAL::Timer Timer;
 
@@ -104,16 +107,22 @@ int main(int argc, char** argv)
         std::cerr << "Keeping largest connected component (" << nrem << "removed)" << std::endl;
     }
 
-    // Count non manifold vertices
-    int counter = 0;
-    for(vertex_descriptor v : vertices(mesh))
-    {
-        if(CGAL::Polygon_mesh_processing::is_non_manifold_vertex(v, mesh))
-        {
-            std::cerr << "vertex " << v << " is non-manifold" << std::endl;
-            ++counter;
-        }
-    }
+    // Compact removed elements before writing.  Without this, newer CGAL
+    // versions can write stale vertex rows that are not included in the OFF
+    // header count.
+    mesh.collect_garbage();
+
+    // Use CGAL's one-pass collector instead of scanning the complete mesh once
+    // for every vertex.
+    std::vector<halfedge_descriptor> non_manifold_halfedges;
+    CGAL::Polygon_mesh_processing::non_manifold_vertices(
+        mesh, std::back_inserter(non_manifold_halfedges));
+    std::set<vertex_descriptor> non_manifold_vertex_set;
+    for(halfedge_descriptor h : non_manifold_halfedges)
+        non_manifold_vertex_set.insert(target(h, mesh));
+    for(vertex_descriptor v : non_manifold_vertex_set)
+        std::cerr << "vertex " << v << " is non-manifold" << std::endl;
+    const std::size_t counter = non_manifold_vertex_set.size();
     std::cerr << "Mesh has " << counter << " non-manifold vertices" << std::endl;
     if(counter > 0) return EXIT_FAILURE;
 
